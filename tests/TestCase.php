@@ -1,37 +1,68 @@
 <?php
 
-namespace VendorName\Skeleton\Tests;
+declare(strict_types=1);
 
-use Illuminate\Database\Eloquent\Factories\Factory;
+namespace InnoGE\LaravelMsGraphMailbox\Tests;
+
+use Closure;
+use Illuminate\Foundation\Application;
+use InnoGE\LaravelMsGraphMailbox\Enums\WellKnownFolder;
+use InnoGE\LaravelMsGraphMailbox\Events\MessageReceived;
+use InnoGE\LaravelMsGraphMailbox\Events\MessageRemoved;
+use InnoGE\LaravelMsGraphMailbox\MailboxServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
-use VendorName\Skeleton\SkeletonServiceProvider;
 
 class TestCase extends Orchestra
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
+    /** @var (Closure(Application): void)|null */
+    public static ?Closure $environment = null;
 
-        Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'VendorName\\Skeleton\\Database\\Factories\\'.class_basename($modelName).'Factory'
-        );
+    protected function tearDown(): void
+    {
+        static::$environment = null;
+
+        parent::tearDown();
     }
 
-    protected function getPackageProviders($app)
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    public function bootWith(array $config): void
     {
-        return [
-            SkeletonServiceProvider::class,
-        ];
+        static::$environment = fn (Application $app) => $app['config']->set($config);
+
+        $this->refreshApplication();
     }
 
-    public function getEnvironmentSetUp($app)
+    protected function getPackageProviders($app): array
     {
-        config()->set('database.default', 'testing');
+        return [MailboxServiceProvider::class];
+    }
 
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/../database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
-         }
-         */
+    protected function defineEnvironment($app): void
+    {
+        $app['config']->set('database.default', 'testing');
+        $app['config']->set('cache.default', 'array');
+        $app['config']->set('queue.default', 'sync');
+        $app['config']->set('msgraph-mailbox.credentials', [
+            'tenant_id' => 'tenant',
+            'client_id' => 'client',
+            'client_secret' => 'secret',
+        ]);
+        $app['config']->set('msgraph-mailbox.mailboxes', [
+            'support@example.com' => [
+                'folders' => [WellKnownFolder::Inbox],
+                'events' => [MessageReceived::class, MessageRemoved::class],
+            ],
+        ]);
+
+        if (static::$environment !== null) {
+            (static::$environment)($app);
+        }
+    }
+
+    protected function defineDatabaseMigrations(): void
+    {
+        (include __DIR__.'/../database/migrations/create_mailbox_tables.php.stub')->up();
     }
 }
