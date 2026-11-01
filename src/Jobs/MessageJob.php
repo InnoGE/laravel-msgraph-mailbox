@@ -14,15 +14,15 @@ abstract class MessageJob extends GraphJob implements ShouldBeUnique
 {
     public int $uniqueFor = 300;
 
-    public readonly string $mailbox;
+    public string $mailbox;
 
     /**
      * @param  list<mixed>  $uniqueBy
      */
     public function __construct(
         string $mailbox,
-        public readonly string $messageId,
-        protected readonly array $uniqueBy = [],
+        public string $messageId,
+        protected array $uniqueBy = [],
     ) {
         parent::__construct();
 

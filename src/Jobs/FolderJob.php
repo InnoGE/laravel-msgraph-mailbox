@@ -11,7 +11,7 @@ abstract class FolderJob extends GraphJob
 {
     public bool $deleteWhenMissingModels = true;
 
-    public function __construct(public readonly MailboxFolder $folder)
+    public function __construct(public MailboxFolder $folder)
     {
         parent::__construct();
     }
