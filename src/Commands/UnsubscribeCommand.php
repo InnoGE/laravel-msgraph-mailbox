@@ -15,7 +15,7 @@ final class UnsubscribeCommand extends Command
 
     protected $description = 'Delete the Microsoft Graph subscriptions (the delta sync state is kept)';
 
-    public function handle(Subscriptions $subscriptions): int
+    public function handle(): int
     {
         $mailbox = $this->argument('mailbox');
 
@@ -24,8 +24,8 @@ final class UnsubscribeCommand extends Command
         MailboxFolder::query()
             ->whereNotNull('subscription_id')
             ->forMailbox(is_string($mailbox) ? $mailbox : null)
-            ->eachById(function (MailboxFolder $folder) use ($subscriptions, &$deleted): void {
-                $subscriptions->unsubscribe($folder);
+            ->eachById(function (MailboxFolder $folder) use (&$deleted): void {
+                $this->laravel->make(Subscriptions::class)->unsubscribe($folder);
                 $deleted++;
             });
 

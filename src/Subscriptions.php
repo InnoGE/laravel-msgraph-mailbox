@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace InnoGE\LaravelMsGraphMailbox;
 
 use Carbon\CarbonImmutable;
+use Closure;
+use Exception;
+use Illuminate\Support\Str;
 use InnoGE\LaravelMsGraphMail\Graph\GraphClient;
 use InnoGE\LaravelMsGraphMail\Graph\InvalidResponseException;
 use InnoGE\LaravelMsGraphMailbox\Enums\ChangeType;
@@ -22,36 +25,42 @@ final readonly class Subscriptions
     ) {}
 
     /**
-     * @return list<array{mailbox: string, folder: string, action: string}>
+     * @return list<array{mailbox: string, folder: string, action: string, failed: bool}>
      */
     public function reconcile(): array
     {
-        $rows = [];
+        $actions = [];
+        $observed = [];
 
         foreach ($this->mailboxes->observed() as $mailbox) {
             foreach ($mailbox->folders as $folder) {
                 $row = MailboxFolder::query()->firstOrNew(['mailbox' => $mailbox->address, 'folder' => Folders::key($folder)]);
                 $row->change_types = collect($mailbox->changeTypes);
-                $this->folders->idOf($row);
-                $rows[] = $row;
+                $changeTypesChanged = $row->exists && $row->isDirty('change_types');
+
+                $actions[] = $this->attempt($row, function () use ($row, $changeTypesChanged): string {
+                    $this->folders->idOf($row);
+                    $action = $this->ensure($row, $changeTypesChanged);
+                    $row->save();
+
+                    return $action;
+                });
+
+                if ($row->exists) {
+                    $observed[] = $row->id;
+                }
             }
         }
 
-        $actions = [];
-
-        foreach ($rows as $row) {
-            $changeTypesChanged = $row->exists && $row->isDirty('change_types');
-            $row->save();
-
-            $actions[] = ['mailbox' => $row->mailbox, 'folder' => $row->folder, 'action' => $this->ensure($row, $changeTypesChanged)];
-        }
-
         MailboxFolder::query()
-            ->whereNotIn('id', array_map(fn (MailboxFolder $row) => $row->id, $rows))
+            ->whereNotIn('id', $observed)
             ->eachById(function (MailboxFolder $row) use (&$actions): void {
-                $this->unsubscribe($row);
-                $row->delete();
-                $actions[] = ['mailbox' => $row->mailbox, 'folder' => $row->folder, 'action' => 'removed'];
+                $actions[] = $this->attempt($row, function () use ($row): string {
+                    $this->unsubscribe($row);
+                    $row->delete();
+
+                    return 'removed';
+                });
             });
 
         return $actions;
@@ -92,6 +101,24 @@ final readonly class Subscriptions
         $folder->client_state_hash = null;
         $folder->subscription_expires_at = null;
         $folder->save();
+    }
+
+    /**
+     * @param  Closure(): string  $work
+     * @return array{mailbox: string, folder: string, action: string, failed: bool}
+     */
+    private function attempt(MailboxFolder $folder, Closure $work): array
+    {
+        try {
+            $action = $work();
+            $failed = false;
+        } catch (Exception $exception) {
+            report($exception);
+            $action = Str::of($exception->getMessage())->before("\n")->limit(120)->prepend('failed: ')->value();
+            $failed = true;
+        }
+
+        return ['mailbox' => $folder->mailbox, 'folder' => $folder->folder, 'action' => $action, 'failed' => $failed];
     }
 
     private function ensure(MailboxFolder $folder, bool $changeTypesChanged): string

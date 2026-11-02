@@ -205,8 +205,7 @@ final class Message
         $autoSubmitted = Str::of((string) $this->header('Auto-Submitted'))->trim()->lower()->value();
 
         return ($autoSubmitted !== '' && $autoSubmitted !== 'no')
-            || $this->header('X-Auto-Response-Suppress') !== null
-            || in_array(Str::of((string) $this->header('Precedence'))->trim()->lower()->value(), ['bulk', 'junk', 'list', 'auto_reply'], true);
+            || in_array(Str::of((string) $this->header('Precedence'))->trim()->lower()->value(), ['bulk', 'junk', 'auto_reply'], true);
     }
 
     /**

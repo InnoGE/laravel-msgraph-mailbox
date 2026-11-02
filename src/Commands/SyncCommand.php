@@ -29,11 +29,7 @@ final class SyncCommand extends Command
             ->forMailbox(is_string($mailbox) ? $mailbox : null)
             ->when(is_string($folder) ? $folder : null, fn ($query, string $folder) => $query->where('folder', $folder))
             ->each(function (MailboxFolder $folder) use (&$queued): void {
-                if ($this->option('reset')) {
-                    $folder->restartWalk();
-                }
-
-                SyncFolder::dispatch($folder);
+                SyncFolder::dispatch($folder, (bool) $this->option('reset'));
                 $queued++;
             });
 

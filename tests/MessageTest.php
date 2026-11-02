@@ -111,8 +111,10 @@ it('detects automatic replies', function (array $headers, bool $expected) {
 })->with([
     'auto-submitted' => [[['name' => 'Auto-Submitted', 'value' => 'auto-replied']], true],
     'auto-submitted no' => [[['name' => 'Auto-Submitted', 'value' => ' No ']], false],
-    'response suppress' => [[['name' => 'X-Auto-Response-Suppress', 'value' => 'All']], true],
+    'response suppress from a ticketing system' => [[['name' => 'X-Auto-Response-Suppress', 'value' => 'All']], false],
     'bulk precedence' => [[['name' => 'Precedence', 'value' => 'Bulk']], true],
+    'auto reply precedence' => [[['name' => 'Precedence', 'value' => 'auto_reply']], true],
+    'mailing list' => [[['name' => 'Precedence', 'value' => 'list']], false],
     'normal mail' => [[['name' => 'Precedence', 'value' => 'first-class']], false],
 ]);
 

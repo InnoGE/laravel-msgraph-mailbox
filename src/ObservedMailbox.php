@@ -42,8 +42,8 @@ final readonly class ObservedMailbox
         array $events = self::DEFAULT_EVENTS,
     ) {
         $address = self::normalize($address);
-        if (filter_var($address, FILTER_VALIDATE_EMAIL) === false && ! Str::isUuid($address)) {
-            throw new InvalidConfigurationException('mailboxes', 'expected an email address or user id as mailbox');
+        if (! self::isAddress($address)) {
+            throw new InvalidConfigurationException('mailboxes', "expected an email address as mailbox, got '{$address}'");
         }
 
         if ($folders === [] || $events === []) {
@@ -58,6 +58,11 @@ final readonly class ObservedMailbox
     public static function normalize(string $address): string
     {
         return Str::of($address)->trim()->lower()->value();
+    }
+
+    public static function isAddress(string $address): bool
+    {
+        return filter_var($address, FILTER_VALIDATE_EMAIL) !== false;
     }
 
     private static function folder(string $address, mixed $folder): WellKnownFolder|string

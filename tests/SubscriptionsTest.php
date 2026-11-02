@@ -7,9 +7,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use InnoGE\LaravelMsGraphMail\Graph\InvalidResponseException;
 use InnoGE\LaravelMsGraphMailbox\Enums\ChangeType;
-use InnoGE\LaravelMsGraphMailbox\Exceptions\FolderNotFoundException;
 use InnoGE\LaravelMsGraphMailbox\Jobs\RefreshSubscription;
 use InnoGE\LaravelMsGraphMailbox\Jobs\SyncFolder;
 use InnoGE\LaravelMsGraphMailbox\Models\MailboxFolder;
@@ -32,7 +30,7 @@ it('creates the observed folder and its subscription', function () {
     $actions = app(Subscriptions::class)->reconcile();
 
     $folder = MailboxFolder::sole();
-    expect($actions)->toBe([['mailbox' => 'support@example.com', 'folder' => 'inbox', 'action' => 'subscribed']])
+    expect($actions)->toBe([['mailbox' => 'support@example.com', 'folder' => 'inbox', 'action' => 'subscribed', 'failed' => false]])
         ->and($folder->folder_id)->toBe('inbox-id')
         ->and($folder->subscription_id)->toBe('sub-1')
         ->and($folder->client_state_hash)->toHaveLength(64)
@@ -104,6 +102,14 @@ it('re-creates subscriptions whose change types changed', function () {
     expect(MailboxFolder::sole()->subscription_id)->toBe('sub-1');
 });
 
+it('keeps the old change types until the old subscription is gone, so a failed swap is retried', function () {
+    subscriptionRoutes(['DELETE /subscriptions/*' => Http::response([], 500)]);
+    mailboxFolder(['subscription_id' => 'old', 'subscription_expires_at' => now()->addDays(3), 'change_types' => collect([ChangeType::Created])]);
+
+    expect(app(Subscriptions::class)->reconcile()[0]['failed'])->toBeTrue()
+        ->and(MailboxFolder::sole())->subscription_id->toBe('old')->change_types->all()->toBe([ChangeType::Created]);
+});
+
 it('re-creates a subscription graph no longer knows', function () {
     subscriptionRoutes(['PATCH /subscriptions/*' => Http::response([], 404)]);
     $folder = mailboxFolder(['subscription_id' => 'gone']);
@@ -135,7 +141,7 @@ it('removes folders that are no longer observed', function () {
 
     $actions = app(Subscriptions::class)->reconcile();
 
-    expect($actions)->toContain(['mailbox' => 'old@example.com', 'folder' => 'inbox', 'action' => 'removed'])
+    expect($actions)->toContain(['mailbox' => 'old@example.com', 'folder' => 'inbox', 'action' => 'removed', 'failed' => false])
         ->and(MailboxFolder::where('mailbox', 'old@example.com')->exists())->toBeFalse();
     Http::assertSent(fn (Request $request) => $request->method() === 'DELETE' && Str::endsWith($request->url(), '/subscriptions/sub-old'));
 });
@@ -151,18 +157,37 @@ it('removes every stale folder, also beyond the first chunk', function () {
     expect(MailboxFolder::count())->toBe(1);
 });
 
-it('changes nothing when a configured folder is missing', function () {
+it('keeps reconciling the other folders when one fails', function () {
     config()->set('msgraph-mailbox.mailboxes', [
-        'support@example.com' => ['folders' => ['inbox']],
         'info@example.com' => ['folders' => ['Missing']],
+        'sales@example.com' => [],
+        'support@example.com' => [],
     ]);
-    subscriptionRoutes(['GET /users/info@example.com/mailFolders' => Http::response(['value' => []])]);
+    subscriptionRoutes([
+        'GET /users/info@example.com/mailFolders' => Http::response(['value' => []]),
+        'GET /users/sales@example.com/mailFolders/inbox' => Http::response([], 403),
+        'DELETE /subscriptions/*' => fn (Request $request) => Http::response([], Str::endsWith($request->url(), 'sub-broken') ? 500 : 204),
+    ]);
+    mailboxFolder(['mailbox' => 'sales@example.com', 'folder_id' => null, 'subscription_id' => 'sub-sales']);
+    mailboxFolder(['mailbox' => 'support@example.com', 'subscription_id' => 'sub-support', 'subscription_expires_at' => now()->addHour()]);
+    mailboxFolder(['mailbox' => 'broken@example.com', 'subscription_id' => 'sub-broken']);
     mailboxFolder(['mailbox' => 'old@example.com', 'subscription_id' => 'sub-old']);
 
-    expect(fn () => app(Subscriptions::class)->reconcile())->toThrow(FolderNotFoundException::class);
+    $actions = app(Subscriptions::class)->reconcile();
 
-    Http::assertNotSent(fn (Request $request) => Str::contains($request->url(), '/subscriptions'));
-    expect(MailboxFolder::pluck('mailbox')->all())->toBe(['old@example.com']);
+    expect(array_column($actions, 'failed', 'mailbox'))->toBe([
+        'info@example.com' => true,
+        'sales@example.com' => true,
+        'support@example.com' => false,
+        'broken@example.com' => true,
+        'old@example.com' => false,
+    ])
+        ->and($actions[0])->toMatchArray(['folder' => 'Missing'])
+        ->and($actions[1]['action'])->toStartWith('failed: HTTP request returned status code 403')
+        ->and($actions[2]['action'])->toBe('renewed')
+        ->and($actions[4]['action'])->toBe('removed')
+        ->and(MailboxFolder::orderBy('mailbox')->pluck('subscription_id', 'mailbox')->all())->toBe(['broken@example.com' => 'sub-broken', 'sales@example.com' => 'sub-sales', 'support@example.com' => 'sub-support']);
+    Http::assertNotSent(fn (Request $request) => Str::endsWith($request->url(), '/subscriptions/sub-sales'));
 });
 
 it('rethrows errors when deleting a subscription fails', function () {
@@ -174,8 +199,8 @@ it('rethrows errors when deleting a subscription fails', function () {
 it('fails on a subscription response without id', function () {
     subscriptionRoutes(['POST /subscriptions' => Http::response([], 201)]);
 
-    app(Subscriptions::class)->reconcile();
-})->throws(InvalidResponseException::class);
+    expect(app(Subscriptions::class)->reconcile()[0]['action'])->toBe('failed: Expected Microsoft Graph to return the id of the created subscription.');
+});
 
 it('renews and syncs after a lifecycle notification', function () {
     subscriptionRoutes();

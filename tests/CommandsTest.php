@@ -78,6 +78,20 @@ it('reconciles subscriptions', function () {
         ->assertSuccessful();
 });
 
+it('fails the subscribe command when a folder fails', function () {
+    fakeGraph(['GET /users/support@example.com/mailFolders/inbox' => Http::response([], 500)]);
+
+    $this->artisan('msgraph-mailbox:subscribe')->assertFailed();
+});
+
+it('subscribes without credentials when no mailboxes are observed', function () {
+    config()->set('msgraph-mailbox.mailboxes', []);
+    config()->set('msgraph-mailbox.credentials', []);
+
+    $this->artisan('msgraph-mailbox:subscribe')->expectsOutputToContain('No mailboxes are observed.')->assertSuccessful();
+    $this->artisan('msgraph-mailbox:unsubscribe')->expectsOutputToContain('Deleted 0 subscription(s).')->assertSuccessful();
+});
+
 it('queues syncs, optionally filtered and reset', function () {
     Bus::fake();
     $inbox = mailboxFolder(['delta_link' => 'https://graph.microsoft.com/v1.0/x']);
@@ -86,11 +100,12 @@ it('queues syncs, optionally filtered and reset', function () {
 
     $this->artisan('msgraph-mailbox:sync')->expectsOutputToContain('Queued the sync of 3 folder(s).')->assertSuccessful();
     Bus::assertDispatchedTimes(SyncFolder::class, 3);
-    expect($inbox->fresh()->delta_link)->not->toBeNull();
+    Bus::assertNotDispatched(SyncFolder::class, fn (SyncFolder $job) => $job->reset);
 
     $this->artisan('msgraph-mailbox:sync', ['mailbox' => 'SUPPORT@example.com', '--folder' => 'inbox', '--reset' => true])
         ->expectsOutputToContain('Queued the sync of 1 folder(s).');
-    expect($inbox->fresh())->delta_link->toBeNull()->walk_started_at->not->toBeNull();
+    Bus::assertDispatched(SyncFolder::class, fn (SyncFolder $job) => $job->reset && $job->folder->is($inbox));
+    expect($inbox->fresh())->delta_link->not->toBeNull()->walk_started_at->toBeNull();
 });
 
 it('deletes subscriptions but keeps the sync state', function () {
