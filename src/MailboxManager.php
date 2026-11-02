@@ -6,10 +6,12 @@ namespace InnoGE\LaravelMsGraphMailbox;
 
 use Closure;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use InnoGE\LaravelMsGraphMailbox\Contracts\MessageGateway;
 use InnoGE\LaravelMsGraphMailbox\Exceptions\InvalidConfigurationException;
 use InnoGE\LaravelMsGraphMailbox\Exceptions\MailboxNotAllowedException;
+use InnoGE\LaravelMsGraphMailbox\Http\WebhookController;
 
 final class MailboxManager
 {
@@ -54,6 +56,16 @@ final class MailboxManager
         $patterns = array_map(Str::lower(...), array_filter(config()->array('msgraph-mailbox.allowed_mailboxes'), is_string(...)));
 
         return $patterns !== [] && Str::is($patterns, $address);
+    }
+
+    /**
+     * Register the webhook route.
+     */
+    public function routes(): void
+    {
+        Route::post(config()->string('msgraph-mailbox.webhooks.path'), WebhookController::class)
+            ->middleware(array_filter(config()->array('msgraph-mailbox.webhooks.middleware'), is_string(...)))
+            ->name('msgraph-mailbox.webhook');
     }
 
     /**

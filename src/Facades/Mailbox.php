@@ -15,6 +15,7 @@ use InnoGE\LaravelMsGraphMailbox\Testing\MailboxFake;
  * @method static bool allows(string $address)
  * @method static void observe(\Closure|iterable<array-key, mixed> $mailboxes)
  * @method static list<\InnoGE\LaravelMsGraphMailbox\ObservedMailbox> observed()
+ * @method static void routes()
  *
  * @see MailboxManager
  */

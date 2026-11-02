@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use InnoGE\LaravelMsGraphMailbox\Enums\LifecycleEvent;
+use InnoGE\LaravelMsGraphMailbox\Facades\Mailbox;
 use InnoGE\LaravelMsGraphMailbox\Jobs\RefreshSubscription;
 use InnoGE\LaravelMsGraphMailbox\Jobs\SyncFolder;
 use InnoGE\LaravelMsGraphMailbox\Testing\WebhookPayload;
@@ -125,6 +126,16 @@ it('registers no route in polling-only mode', function () {
     $this->bootWith(['msgraph-mailbox.webhooks.enabled' => false]);
 
     expect(Route::has('msgraph-mailbox.webhook'))->toBeFalse();
+});
+
+it('lets the app register the route itself', function () {
+    $this->bootWith(['msgraph-mailbox.webhooks.register_route' => false]);
+
+    expect(Route::has('msgraph-mailbox.webhook'))->toBeFalse();
+
+    Route::prefix('api')->group(fn () => Mailbox::routes());
+
+    $this->post('/api/webhooks/msgraph-mailbox?validationToken=token')->assertOk()->assertContent('token');
 });
 
 it('applies the configured path and middleware', function () {

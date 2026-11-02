@@ -67,12 +67,19 @@ return [
         'enabled' => env('MSGRAPH_MAILBOX_WEBHOOKS', true),
 
         /*
+         * Register the webhook route automatically. Turn it off to call Mailbox::routes() in your own
+         * routes file instead, e.g. inside a group with its own domain or prefix.
+         */
+        'register_route' => true,
+
+        /*
          * The path of the webhook route. It must be reachable by Microsoft over HTTPS.
          */
         'path' => 'webhooks/msgraph-mailbox',
 
         /*
-         * Middleware for the webhook route. It runs outside the "web" group: no session, no CSRF.
+         * Middleware for the webhook route. The automatically registered route runs outside the "web"
+         * group: no session, no CSRF.
          * Do not add rate limiting, Microsoft retries rejected notifications and drops subscriptions
          * that keep failing.
          */

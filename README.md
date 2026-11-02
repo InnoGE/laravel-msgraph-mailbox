@@ -13,6 +13,8 @@
     - [Registering the Entra App](#registering-the-entra-app)
     - [Configuring Mailboxes](#configuring-mailboxes)
     - [Going Live](#going-live)
+    - [Scheduling the Commands Yourself](#scheduling-the-commands-yourself)
+    - [Registering the Webhook Route Yourself](#registering-the-webhook-route-yourself)
 - [Receiving Messages](#receiving-messages)
 - [Working With Messages](#working-with-messages)
     - [Reading Messages](#reading-messages)
@@ -166,6 +168,60 @@ attention, so you can use it for monitoring, too:
 ```shell
 php artisan msgraph-mailbox:status
 ```
+
+<a name="scheduling-the-commands-yourself"></a>
+### Scheduling the Commands Yourself
+
+If you'd rather decide when the commands run, turn off the automatic scheduling in your `.env` file:
+
+```ini
+MSGRAPH_MAILBOX_SCHEDULE=false
+```
+
+Then schedule both commands in your application's `routes/console.php` file. Run the subscribe command at least once
+a day so subscriptions are renewed before they expire, and the sync every few minutes, since it catches every change
+a webhook missed and is your only source of events when webhooks are disabled:
+
+```php
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('msgraph-mailbox:subscribe')->hourly()->onOneServer()->withoutOverlapping();
+Schedule::command('msgraph-mailbox:sync')->everyFifteenMinutes()->onOneServer();
+```
+
+If you only want different intervals, keep the automatic scheduling and change the `subscriptions.cron` and
+`sync.cron` options in the `config/msgraph-mailbox.php` configuration file instead.
+
+<a name="registering-the-webhook-route-yourself"></a>
+### Registering the Webhook Route Yourself
+
+The package registers its webhook route, `POST /webhooks/msgraph-mailbox`, outside the `web` middleware group, so
+there is no session and no CSRF check. You may change the path and add middleware with the `webhooks.path` and
+`webhooks.middleware` options in the `config/msgraph-mailbox.php` configuration file.
+
+If the route should live on a specific domain or behind a prefix, turn off the automatic registration:
+
+```php
+'webhooks' => [
+    'register_route' => false,
+    // ...
+],
+```
+
+Then register the route in one of your route files with `Mailbox::routes()`. It still uses the configured path and
+middleware, and the subscribe command picks up the resulting URL automatically:
+
+```php
+use InnoGE\LaravelMsGraphMailbox\Facades\Mailbox;
+
+Route::domain('hooks.example.com')->group(function () {
+    Mailbox::routes();
+});
+```
+
+Keep the route out of the `web` group, Microsoft's requests would fail the CSRF check, and don't rate limit it:
+Microsoft retries rejected notifications and eventually drops subscriptions that keep failing. Disabling webhooks
+entirely with `MSGRAPH_MAILBOX_WEBHOOKS=false` removes the route as well.
 
 <a name="receiving-messages"></a>
 ## Receiving Messages

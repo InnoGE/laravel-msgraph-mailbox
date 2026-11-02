@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace InnoGE\LaravelMsGraphMailbox;
 
 use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Support\Facades\Route;
 use InnoGE\LaravelMsGraphMail\Graph\ClientCertificate;
 use InnoGE\LaravelMsGraphMail\Graph\ClientSecret;
 use InnoGE\LaravelMsGraphMail\Graph\GraphClient;
@@ -17,7 +16,6 @@ use InnoGE\LaravelMsGraphMailbox\Commands\SyncCommand;
 use InnoGE\LaravelMsGraphMailbox\Commands\UnsubscribeCommand;
 use InnoGE\LaravelMsGraphMailbox\Contracts\MessageGateway;
 use InnoGE\LaravelMsGraphMailbox\Exceptions\MissingCredentialsException;
-use InnoGE\LaravelMsGraphMailbox\Http\WebhookController;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 
@@ -68,10 +66,8 @@ final class MailboxServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
-        if (config()->boolean('msgraph-mailbox.webhooks.enabled')) {
-            Route::post(config()->string('msgraph-mailbox.webhooks.path'), WebhookController::class)
-                ->middleware(array_filter(config()->array('msgraph-mailbox.webhooks.middleware'), is_string(...)))
-                ->name('msgraph-mailbox.webhook');
+        if (config()->boolean('msgraph-mailbox.webhooks.enabled') && config()->boolean('msgraph-mailbox.webhooks.register_route')) {
+            $this->app->make(MailboxManager::class)->routes();
         }
 
         if (config()->boolean('msgraph-mailbox.schedule')) {

@@ -42,7 +42,7 @@ Observed mailboxes live in `config/msgraph-mailbox.php`. Always use the mailbox'
 
 Mailboxes from the database: `Mailbox::observe(fn () => Team::pluck('support_mailbox'))` in a service provider, returning the same shape.
 
-Deploy: run `php artisan msgraph-mailbox:subscribe`. The package schedules it hourly plus a delta sync every 15 minutes, so the scheduler and a queue worker must run. Webhooks need the app reachable over HTTPS; locally use `MSGRAPH_MAILBOX_WEBHOOKS=false` (polling only) or a tunnel URL in `MSGRAPH_MAILBOX_NOTIFICATION_URL`.
+Deploy: run `php artisan msgraph-mailbox:subscribe`. The package schedules it hourly plus a delta sync every 15 minutes, so the scheduler and a queue worker must run. Webhooks need the app reachable over HTTPS; locally use `MSGRAPH_MAILBOX_WEBHOOKS=false` (polling only) or a tunnel URL in `MSGRAPH_MAILBOX_NOTIFICATION_URL`. To own the scheduling, set `MSGRAPH_MAILBOX_SCHEDULE=false` and schedule both commands yourself. To register the webhook route on a custom domain or prefix, set `webhooks.register_route` to `false` and call `Mailbox::routes()` in a route file, outside the `web` group.
 
 ## Events
 
