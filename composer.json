@@ -1,48 +1,53 @@
 {
-    "name": ":vendor_slug/:package_slug",
-    "description": ":package_description",
+    "name": "innoge/laravel-msgraph-mailbox",
+    "description": "Observe Microsoft 365 mailboxes via Microsoft Graph change notifications and delta queries, and act on their messages",
     "keywords": [
-        ":vendor_name",
+        "InnoGE",
         "laravel",
-        ":package_slug"
+        "microsoft-graph",
+        "office365",
+        "mailbox",
+        "laravel-msgraph-mailbox"
     ],
-    "homepage": "https://github.com/:vendor_slug/:package_slug",
+    "homepage": "https://github.com/innoge/laravel-msgraph-mailbox",
     "license": "MIT",
     "authors": [
         {
-            "name": ":author_name",
-            "email": "author@domain.com",
+            "name": "Tim Geisendoerfer",
+            "email": "geisi@users.noreply.github.com",
             "role": "Developer"
         }
     ],
     "require": {
-        "php": "^8.4",
-        "spatie/laravel-package-tools": "^1.16",
-        "illuminate/contracts": "^11.0||^12.0||^13.0"
+        "php": "^8.3",
+        "guzzlehttp/psr7": "^2.0",
+        "illuminate/contracts": "^12.53|^13.0",
+        "innoge/laravel-msgraph-mail": "^3.0",
+        "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
+        "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
         "nunomaduro/collision": "^8.8",
-        "larastan/larastan": "^3.0",
-        "orchestra/testbench": "^11.0.0||^10.0.0||^9.0.0",
+        "orchestra/testbench": "^10.0|^11.0",
         "pestphp/pest": "^4.0",
         "pestphp/pest-plugin-arch": "^4.0",
         "pestphp/pest-plugin-laravel": "^4.0",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan-deprecation-rules": "^2.0",
-        "phpstan/phpstan-phpunit": "^2.0",
-        "spatie/laravel-ray": "^1.35"
+        "phpstan/phpstan-phpunit": "^2.0"
+    },
+    "suggest": {
+        "phpunit/phpunit": "Required for the assertions of Mailbox::fake() (FakeMessageGateway)"
     },
     "autoload": {
         "psr-4": {
-            "VendorName\\Skeleton\\": "src/",
-            "VendorName\\Skeleton\\Database\\Factories\\": "database/factories/"
+            "InnoGE\\LaravelMsGraphMailbox\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "VendorName\\Skeleton\\Tests\\": "tests/",
-            "Workbench\\App\\": "workbench/app/"
+            "InnoGE\\LaravelMsGraphMailbox\\Tests\\": "tests/"
         }
     },
     "scripts": {
@@ -50,7 +55,7 @@
         "prepare": "@php vendor/bin/testbench package:discover --ansi",
         "analyse": "vendor/bin/phpstan analyse",
         "test": "vendor/bin/pest",
-        "test-coverage": "vendor/bin/pest --coverage",
+        "test-coverage": "vendor/bin/pest --coverage --min=100",
         "format": "vendor/bin/pint"
     },
     "config": {
@@ -63,10 +68,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "VendorName\\Skeleton\\SkeletonServiceProvider"
+                "InnoGE\\LaravelMsGraphMailbox\\MailboxServiceProvider"
             ],
             "aliases": {
-                "Skeleton": "VendorName\\Skeleton\\Facades\\Skeleton"
+                "Mailbox": "InnoGE\\LaravelMsGraphMailbox\\Facades\\Mailbox"
             }
         }
     },
