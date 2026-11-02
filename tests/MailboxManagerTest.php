@@ -27,5 +27,6 @@ it('allows every mailbox with the wildcard', function () {
 });
 
 it('skips the check for explicitly unrestricted access', function () {
-    expect(Mailbox::forUnrestricted('ceo@example.com')->message('id')->mailbox)->toBe('ceo@example.com');
+    expect(Mailbox::forUnrestricted('ceo@example.com')->message('id')->mailbox)->toBe('ceo@example.com')
+        ->and(fn () => Mailbox::forUnrestricted('8b0f6a2e-7c1d-4e3a-9f5b-2d6c8e1a4b7f'))->toThrow(InvalidArgumentException::class, 'Expected an email address');
 });

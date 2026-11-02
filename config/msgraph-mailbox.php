@@ -26,8 +26,8 @@ return [
     ],
 
     /*
-     * The mailboxes to observe. List them by their primary SMTP address (not an alias, Graph reports
-     * senders by their primary address) or by their Entra user id.
+     * The mailboxes to observe, by their primary SMTP address. Not an alias: Graph reports senders by
+     * their primary address.
      *
      * A plain address observes the inbox and fires MessageReceived and every MessageRemoved event:
      *

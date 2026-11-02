@@ -193,10 +193,24 @@ it('reports removals after a reset even when an earlier walk was aborted', funct
     $folder->messages()->create(['message_id' => 'vanished', 'change_key' => 'ck', 'seen_at' => now()->subHour()]);
 
     Bus::fake([SyncFolder::class]);
-    $this->artisan('msgraph-mailbox:sync', ['--reset' => true]);
+    app()->call([new SyncFolder($folder, reset: true), 'handle']);
     sync($folder->fresh());
 
     Event::assertDispatched(MessagePermanentlyDeleted::class, fn ($event) => $event->messageId === 'vanished');
+});
+
+it('resets the walk as its own step under the sync lock of the folder', function () {
+    Bus::fake([SyncFolder::class]);
+    fakeGraph();
+    $folder = baselined();
+    $reset = new SyncFolder($folder, reset: true);
+
+    app()->call([$reset, 'handle']);
+
+    expect($folder->fresh())->delta_link->toBeNull()->walk_started_at->not->toBeNull()
+        ->and($reset->middleware()[0]->key)->toBe((new SyncFolder($folder))->middleware()[0]->key);
+    Bus::assertDispatched(SyncFolder::class, fn (SyncFolder $job) => ! $job->reset);
+    Http::assertNothingSent();
 });
 
 it('keeps messages seen earlier in a walk that spans several runs', function () {

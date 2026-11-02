@@ -48,10 +48,6 @@ it('observes a plain list of mailboxes', function () {
         ->and(Mailbox::allows('list@example.com'))->toBeTrue();
 });
 
-it('accepts user ids as mailbox', function () {
-    expect((new ObservedMailbox('6F1C1E2A-6C1B-4C4B-9E43-7A1F2B3C4D5E'))->address)->toBe('6f1c1e2a-6c1b-4c4b-9e43-7a1f2b3c4d5e');
-});
-
 it('deduplicates events', function () {
     expect((new ObservedMailbox('a@example.com', events: [MessageRemoved::class, MessageRemoved::class]))->changeTypes)->toBe([ChangeType::Deleted]);
 });
@@ -59,7 +55,8 @@ it('deduplicates events', function () {
 it('rejects invalid mailbox definitions', function (Closure $definition, string $message) {
     expect($definition)->toThrow(InvalidConfigurationException::class, $message);
 })->with([
-    'no address' => [fn () => new ObservedMailbox('not-an-address'), 'expected an email address or user id'],
+    'no address' => [fn () => new ObservedMailbox('not-an-address'), "expected an email address as mailbox, got 'not-an-address'"],
+    'entra user id' => [fn () => new ObservedMailbox('8b0f6a2e-7c1d-4e3a-9f5b-2d6c8e1a4b7f'), 'expected an email address'],
     'no folders' => [fn () => new ObservedMailbox('a@example.com', []), 'must not be empty'],
     'no events' => [fn () => new ObservedMailbox('a@example.com', events: []), 'must not be empty'],
     'unknown event' => [fn () => new ObservedMailbox('a@example.com', events: ['created']), 'expected MessageReceived::class'],

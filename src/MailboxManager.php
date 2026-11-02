@@ -12,6 +12,7 @@ use InnoGE\LaravelMsGraphMailbox\Contracts\MessageGateway;
 use InnoGE\LaravelMsGraphMailbox\Exceptions\InvalidConfigurationException;
 use InnoGE\LaravelMsGraphMailbox\Exceptions\MailboxNotAllowedException;
 use InnoGE\LaravelMsGraphMailbox\Http\WebhookController;
+use InvalidArgumentException;
 
 final class MailboxManager
 {
@@ -37,7 +38,12 @@ final class MailboxManager
      */
     public function forUnrestricted(string $address): MailboxClient
     {
-        return new MailboxClient(ObservedMailbox::normalize($address), $this->container->make(MessageGateway::class));
+        $address = ObservedMailbox::normalize($address);
+        if (! ObservedMailbox::isAddress($address)) {
+            throw new InvalidArgumentException("Expected an email address as mailbox, got [{$address}].");
+        }
+
+        return new MailboxClient($address, $this->container->make(MessageGateway::class));
     }
 
     /**

@@ -73,8 +73,10 @@ it('collapses duplicate folder syncs', function () {
 
     SyncFolder::dispatch($folder);
     SyncFolder::dispatch($folder);
+    SyncFolder::dispatch($folder, reset: true);
+    SyncFolder::dispatch($folder, reset: true);
 
-    Queue::assertPushed(SyncFolder::class, 1);
+    Queue::assertPushed(SyncFolder::class, 2);
 });
 
 it('uses the configured queue, retry window and throttle', function () {
