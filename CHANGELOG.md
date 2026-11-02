@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-msgraph-mailbox` will be documented in this file.
 
+## v1.0.1 - 2026-11-02
+
+### What's Changed
+
+* Fix subscribe, sync reset and loop guard bugs by @geisi in https://github.com/InnoGE/laravel-msgraph-mailbox/pull/2
+
+**Full Changelog**: https://github.com/InnoGE/laravel-msgraph-mailbox/compare/v1.0.0...v1.0.1
+
 ## v1.0.0 - 2026-11-02
 
 Initial release.
