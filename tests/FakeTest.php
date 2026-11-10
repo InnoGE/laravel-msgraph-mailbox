@@ -110,7 +110,7 @@ it('lists fake messages by folder and date', function () {
 
     $mailbox = Mailbox::for('support@example.com');
 
-    expect(array_column($mailbox->messages()->messages, 'id'))->toBe(['old', 'new'])
+    expect(array_column($mailbox->messages()->messages, 'id'))->toBe(['new', 'old'])
         ->and(array_column($mailbox->messages(since: CarbonImmutable::parse('2026-01-01', 'UTC'))->messages, 'id'))->toBe(['new'])
         ->and(array_column($mailbox->messages(WellKnownFolder::SentItems)->messages, 'id'))->toBe(['sent'])
         ->and($mailbox->messages()->next)->toBeNull();

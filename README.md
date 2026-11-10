@@ -532,7 +532,7 @@ $message = $mailbox->receive('support@example.com', [
 ]);
 ```
 
-You may also seed messages without dispatching an event with `addMessage`, which is also what `messages()` lists. Afterwards, assert what your code did:
+You may also seed messages without dispatching an event with `addMessage`, which is also what `messages()` lists, newest first by `receivedDateTime`. Afterwards, assert what your code did:
 
 ```php
 $mailbox->assertMoved($message, WellKnownFolder::Archive);

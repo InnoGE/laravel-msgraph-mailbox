@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace InnoGE\LaravelMsGraphMailbox;
 
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Str;
@@ -13,14 +14,13 @@ use InnoGE\LaravelMsGraphMailbox\Contracts\MessageGateway;
 use InnoGE\LaravelMsGraphMailbox\Enums\BodyType;
 use InnoGE\LaravelMsGraphMailbox\Enums\FlagStatus;
 use InnoGE\LaravelMsGraphMailbox\Enums\WellKnownFolder;
+use InvalidArgumentException;
 use Psr\Http\Message\StreamInterface;
 use Throwable;
 
 /** @internal */
 final readonly class GraphMessageGateway implements MessageGateway
 {
-    private const string PAGE_SIZE = 'odata.maxpagesize=50';
-
     private const string FIELDS = 'id,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,internetMessageId,conversationId,bccRecipients,replyTo,bodyPreview,hasAttachments,internetMessageHeaders,isRead,flag,categories,parentFolderId';
 
     public function __construct(private GraphClient $graph, private Folders $folders) {}
@@ -42,15 +42,18 @@ final readonly class GraphMessageGateway implements MessageGateway
 
     public function page(string $mailbox, WellKnownFolder|string $folder, ?DateTimeInterface $since, ?string $next): array
     {
-        $request = $this->graph->request(self::PAGE_SIZE);
+        if ($next !== null && ! Str::startsWith(Str::lower(rawurldecode((string) parse_url($next, PHP_URL_PATH))), Str::lower('/v1.0'.$this->graph->path('users', $mailbox).'/'))) {
+            throw new InvalidArgumentException("The next link does not belong to mailbox [{$mailbox}].");
+        }
 
         $page = ($next === null
-            ? $request->get($this->graph->path('users', $mailbox, 'mailFolders', $this->destination($mailbox, $folder, false), 'messages'), array_filter([
+            ? $this->graph->request()->get($this->graph->path('users', $mailbox, 'mailFolders', $this->destination($mailbox, $folder, false), 'messages'), array_filter([
                 '$select' => self::FIELDS,
+                '$top' => 50,
                 '$orderby' => 'receivedDateTime desc',
-                '$filter' => $since === null ? null : 'receivedDateTime ge '.$since->format('Y-m-d\TH:i:s\Z'),
+                '$filter' => $since === null ? null : 'receivedDateTime ge '.CarbonImmutable::instance($since)->toIso8601ZuluString(),
             ]))
-            : $request->get($next))
+            : $this->graph->request()->get($next))
             ->throw()
             ->json();
 

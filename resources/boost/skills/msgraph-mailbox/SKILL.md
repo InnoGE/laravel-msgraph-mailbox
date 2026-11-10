@@ -69,7 +69,7 @@ $message->move('Support/Done'); $message->flag(FlagStatus::Complete); $message->
 $message->delete(); // Deleted Items
 $message->permanentDelete();
 
-$message->conversationId(); $message->sentAt(); $message->bcc(); $message->replyTo(); $message->preview();
+$message->conversationId(); $message->sentAt(); $message->bcc(); $message->replyTo(); $message->preview(); $message->hasAttachments();
 $message->reply('<p>HTML</p>'); $message->replyAll('<p>HTML</p>', [['name' => 'a.pdf', 'contentType' => 'application/pdf', 'contents' => $pdf]]);
 
 $page = Mailbox::for('support@example.com')->messages(WellKnownFolder::SentItems, since: now()->subYear()); // newest first, 50 per page

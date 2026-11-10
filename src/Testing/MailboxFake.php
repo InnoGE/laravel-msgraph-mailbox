@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace InnoGE\LaravelMsGraphMailbox\Testing;
 
+use Carbon\CarbonImmutable;
 use Closure;
 use DateTimeInterface;
 use GuzzleHttp\Psr7\Utils;
@@ -72,16 +73,17 @@ final class MailboxFake implements MessageGateway
         $prefix = ObservedMailbox::normalize($mailbox)."\0";
         $folder = Folders::key(Folders::normalize($folder));
 
-        return [
-            'messages' => array_values(array_filter(
-                $this->messages,
-                fn (array $message, string $key) => Str::startsWith($key, $prefix)
-                    && $this->folders[$key] === $folder
-                    && ($since === null || $this->string($message['receivedDateTime'] ?? null) >= $since->format('Y-m-d\TH:i:s\Z')),
-                ARRAY_FILTER_USE_BOTH,
-            )),
-            'next' => null,
-        ];
+        $messages = array_filter(
+            $this->messages,
+            fn (array $message, string $key) => Str::startsWith($key, $prefix)
+                && $this->folders[$key] === $folder
+                && ($since === null || $this->string($message['receivedDateTime'] ?? null) >= CarbonImmutable::instance($since)->toIso8601ZuluString()),
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        usort($messages, fn (array $a, array $b) => $this->string($b['receivedDateTime'] ?? null) <=> $this->string($a['receivedDateTime'] ?? null));
+
+        return ['messages' => $messages, 'next' => null];
     }
 
     public function reply(string $mailbox, string $messageId, string $html, bool $all, array $attachments): void

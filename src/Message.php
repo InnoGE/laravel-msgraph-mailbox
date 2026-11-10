@@ -15,9 +15,6 @@ use Psr\Http\Message\StreamInterface;
 
 final class Message
 {
-    /** @var array<string, mixed>|null */
-    private ?array $data = null;
-
     /** @var array<string, string> */
     private array $bodies = [];
 
@@ -31,10 +28,8 @@ final class Message
         public readonly string $mailbox,
         public readonly string $id,
         private readonly MessageGateway $gateway,
-        ?array $data = null,
-    ) {
-        $this->data = $data;
-    }
+        private ?array $data = null,
+    ) {}
 
     /**
      * Get the subject of the message.

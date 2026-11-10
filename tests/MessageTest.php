@@ -344,6 +344,7 @@ it('lists a folder page by page without loading each message again', function ()
 
     Http::assertSent(fn (Request $request) => ($request['$filter'] ?? null) === 'receivedDateTime ge 2025-11-10T08:00:00Z'
         && $request['$orderby'] === 'receivedDateTime desc'
+        && (int) $request['$top'] === 50
         && Str::contains($request['$select'], 'conversationId'));
 });
 
@@ -353,6 +354,21 @@ it('lists the inbox without a date filter by default', function () {
     expect(Mailbox::for('support@example.com')->messages()->messages)->toBe([]);
 
     Http::assertSent(fn (Request $request) => Str::contains($request->url(), 'mailFolders/inbox') && ! isset($request['$filter']));
+});
+
+it('refuses a next link of another mailbox', function () {
+    fakeGraph();
+
+    expect(fn () => Mailbox::for('support@example.com')->messages(next: 'https://graph.microsoft.com/v1.0/users/ceo@example.com/mailFolders/inbox/messages?%24skip=50'))
+        ->toThrow(InvalidArgumentException::class, 'does not belong to mailbox [support@example.com]');
+
+    expect(graphRequestCount())->toBe(0);
+});
+
+it('follows a next link that encodes the mailbox differently', function () {
+    fakeGraph(['GET /users/*/mailFolders/inbox/messages' => Http::response(['value' => []])]);
+
+    expect(Mailbox::for('support@example.com')->messages(next: 'https://graph.microsoft.com/v1.0/users/Support%40example.com/mailFolders/inbox/messages?%24skip=50')->messages)->toBe([]);
 });
 
 it('rejects a page without a message list', function () {
