@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
 use InnoGE\LaravelMsGraphMailbox\Enums\BodyType;
 use InnoGE\LaravelMsGraphMailbox\Enums\FlagStatus;
@@ -98,4 +99,28 @@ it('records actions for assertions', function () {
     expect(fn () => $fake->assertMoved('msg-1', WellKnownFolder::Archive, mailbox: 'other@example.com'))->toThrow(ExpectationFailedException::class, 'in mailbox [other@example.com].')
         ->and(fn () => $fake->assertMoved('msg-1', 'Elsewhere'))->toThrow(ExpectationFailedException::class, 'Message [msg-1] was not moved to [Elsewhere].')
         ->and(fn () => $fake->assertNothingPerformed())->toThrow(ExpectationFailedException::class);
+});
+
+it('lists fake messages by folder and date', function () {
+    Mailbox::fake()
+        ->addMessage('support@example.com', 'old', ['receivedDateTime' => '2025-01-01T00:00:00Z'])
+        ->addMessage('support@example.com', 'new', ['receivedDateTime' => '2026-11-01T00:00:00Z'])
+        ->addMessage('support@example.com', 'sent', [], WellKnownFolder::SentItems)
+        ->addMessage('other@example.com', 'elsewhere');
+
+    $mailbox = Mailbox::for('support@example.com');
+
+    expect(array_column($mailbox->messages()->messages, 'id'))->toBe(['new', 'old'])
+        ->and(array_column($mailbox->messages(since: CarbonImmutable::parse('2026-01-01', 'UTC'))->messages, 'id'))->toBe(['new'])
+        ->and(array_column($mailbox->messages(WellKnownFolder::SentItems)->messages, 'id'))->toBe(['sent'])
+        ->and($mailbox->messages()->next)->toBeNull();
+});
+
+it('records replies for assertions', function () {
+    $fake = Mailbox::fake()->addMessage('support@example.com', 'msg-1');
+
+    Mailbox::for('support@example.com')->message('msg-1')->replyAll('<p>Hi</p>', [['name' => 'a.txt', 'contentType' => 'text/plain', 'contents' => 'a']]);
+
+    $fake->assertReplied('msg-1');
+    $fake->assertReplied('msg-1', fn (string $html, bool $all, array $attachments) => $html === '<p>Hi</p>' && $all && $attachments[0]['name'] === 'a.txt');
 });

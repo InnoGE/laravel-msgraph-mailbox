@@ -68,6 +68,12 @@ $message->markRead()->categorize('Customer')->archive(); // actions are chainabl
 $message->move('Support/Done'); $message->flag(FlagStatus::Complete); $message->setCategories([...]); // replaces
 $message->delete(); // Deleted Items
 $message->permanentDelete();
+
+$message->conversationId(); $message->sentAt(); $message->bcc(); $message->replyTo(); $message->preview(); $message->hasAttachments();
+$message->reply('<p>HTML</p>'); $message->replyAll('<p>HTML</p>', [['name' => 'a.pdf', 'contentType' => 'application/pdf', 'contents' => $pdf]]);
+
+$page = Mailbox::for('support@example.com')->messages(WellKnownFolder::SentItems, since: now()->subYear()); // newest first, 50 per page
+$page->messages; $page->next; // pass next: $page->next for the following page, one page per queued job
 ```
 
 - `Mailbox::for()` only accepts observed mailboxes and `allowed_mailboxes` patterns; `forUnrestricted()` skips that check and must only get authorized addresses.
@@ -75,6 +81,7 @@ $message->permanentDelete();
 - Queued actions: `MoveMessage::dispatch($mailbox, $id, WellKnownFolder::Archive)` and siblings.
 - Own queued listeners/jobs calling Graph: add `new ThrottleGraphRequests($event->mailbox)` as job middleware.
 - HTML bodies are not sanitized.
+- Replies quote the original, stay in the conversation and land in Sent Items; they need `Mail.Send`, attachments up to 3 MB each. Test with `$mailbox->assertReplied($message, fn ($html, $all, $attachments) => ...)`.
 
 ## Testing
 
