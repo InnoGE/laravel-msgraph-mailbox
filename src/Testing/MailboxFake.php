@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace InnoGE\LaravelMsGraphMailbox\Testing;
 
 use Closure;
+use DateTimeInterface;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Str;
 use InnoGE\LaravelMsGraphMailbox\Contracts\MessageGateway;
@@ -24,6 +25,9 @@ final class MailboxFake implements MessageGateway
     /** @var array<string, array<string, mixed>> */
     private array $messages = [];
 
+    /** @var array<string, string> */
+    private array $folders = [];
+
     /** @var list<array{action: string, mailbox: string, id: string, argument: mixed}> */
     private array $actions = [];
 
@@ -32,9 +36,10 @@ final class MailboxFake implements MessageGateway
      *
      * @param  array<string, mixed>  $message
      */
-    public function addMessage(string $mailbox, string $messageId, array $message = []): self
+    public function addMessage(string $mailbox, string $messageId, array $message = [], WellKnownFolder|string $folder = WellKnownFolder::Inbox): self
     {
         $this->messages[$this->key($mailbox, $messageId)] = ['id' => $messageId, ...$message];
+        $this->folders[$this->key($mailbox, $messageId)] = Folders::key(Folders::normalize($folder));
 
         return $this;
     }
@@ -49,7 +54,7 @@ final class MailboxFake implements MessageGateway
         $messageId = is_string($message['id'] ?? null) ? $message['id'] : (string) Str::uuid();
         $mailbox = ObservedMailbox::normalize($mailbox);
 
-        $this->addMessage($mailbox, $messageId, $message);
+        $this->addMessage($mailbox, $messageId, $message, $folder);
 
         event(new MessageReceived($mailbox, Folders::key(Folders::normalize($folder)), $messageId));
 
@@ -60,6 +65,28 @@ final class MailboxFake implements MessageGateway
     {
         return $this->messages[$this->key($mailbox, $messageId)]
             ?? throw new RuntimeException("No fake message [{$messageId}] was added for mailbox [{$mailbox}].");
+    }
+
+    public function page(string $mailbox, WellKnownFolder|string $folder, ?DateTimeInterface $since, ?string $next): array
+    {
+        $prefix = ObservedMailbox::normalize($mailbox)."\0";
+        $folder = Folders::key(Folders::normalize($folder));
+
+        return [
+            'messages' => array_values(array_filter(
+                $this->messages,
+                fn (array $message, string $key) => Str::startsWith($key, $prefix)
+                    && $this->folders[$key] === $folder
+                    && ($since === null || $this->string($message['receivedDateTime'] ?? null) >= $since->format('Y-m-d\TH:i:s\Z')),
+                ARRAY_FILTER_USE_BOTH,
+            )),
+            'next' => null,
+        ];
+    }
+
+    public function reply(string $mailbox, string $messageId, string $html, bool $all, array $attachments): void
+    {
+        $this->record('reply', $mailbox, $messageId, fn (?Closure $callback): bool => $callback === null || $callback($html, $all, $attachments));
     }
 
     public function body(string $mailbox, string $messageId, BodyType $type, bool $unique): string
@@ -202,6 +229,22 @@ final class MailboxFake implements MessageGateway
             $message,
             fn (mixed $set) => is_array($set) && array_diff($categories, array_filter($set, is_string(...))) === [],
             'was not categorized as ['.implode(', ', $categories).']',
+            $mailbox,
+        );
+    }
+
+    /**
+     * Assert that the message was replied to, optionally matching the reply with a truth test.
+     *
+     * @param  (Closure(string, bool, list<array{name: string, contentType: string, contents: string}>): bool)|null  $callback
+     */
+    public function assertReplied(Message|string $message, ?Closure $callback = null, ?string $mailbox = null): void
+    {
+        $this->assertPerformed(
+            'reply',
+            $message,
+            fn (mixed $reply) => $reply instanceof Closure && $reply($callback) === true,
+            'was not replied to as expected',
             $mailbox,
         );
     }

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace InnoGE\LaravelMsGraphMailbox;
 
+use DateTimeInterface;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Str;
 use InnoGE\LaravelMsGraphMail\Graph\GraphClient;
 use InnoGE\LaravelMsGraphMail\Graph\InvalidResponseException;
 use InnoGE\LaravelMsGraphMailbox\Contracts\MessageGateway;
@@ -17,7 +19,9 @@ use Throwable;
 /** @internal */
 final readonly class GraphMessageGateway implements MessageGateway
 {
-    private const string FIELDS = 'id,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,internetMessageId,internetMessageHeaders,isRead,flag,categories,parentFolderId';
+    private const string PAGE_SIZE = 'odata.maxpagesize=50';
+
+    private const string FIELDS = 'id,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,internetMessageId,conversationId,bccRecipients,replyTo,bodyPreview,hasAttachments,internetMessageHeaders,isRead,flag,categories,parentFolderId';
 
     public function __construct(private GraphClient $graph, private Folders $folders) {}
 
@@ -34,6 +38,72 @@ final readonly class GraphMessageGateway implements MessageGateway
 
         /** @var array<string, mixed> $message */
         return $message;
+    }
+
+    public function page(string $mailbox, WellKnownFolder|string $folder, ?DateTimeInterface $since, ?string $next): array
+    {
+        $request = $this->graph->request(self::PAGE_SIZE);
+
+        $page = ($next === null
+            ? $request->get($this->graph->path('users', $mailbox, 'mailFolders', $this->destination($mailbox, $folder, false), 'messages'), array_filter([
+                '$select' => self::FIELDS,
+                '$orderby' => 'receivedDateTime desc',
+                '$filter' => $since === null ? null : 'receivedDateTime ge '.$since->format('Y-m-d\TH:i:s\Z'),
+            ]))
+            : $request->get($next))
+            ->throw()
+            ->json();
+
+        if (! is_array($page) || ! is_array($page['value'] ?? null)) {
+            throw new InvalidResponseException('Expected Microsoft Graph to return a page of messages.');
+        }
+
+        /** @var list<array<string, mixed>> $messages */
+        $messages = array_values(array_filter($page['value'], is_array(...)));
+
+        return ['messages' => $messages, 'next' => is_string($page['@odata.nextLink'] ?? null) ? $page['@odata.nextLink'] : null];
+    }
+
+    public function reply(string $mailbox, string $messageId, string $html, bool $all, array $attachments): void
+    {
+        $draft = $this->graph->request('outlook.body-content-type="html"')
+            ->post($this->graph->path('users', $mailbox, 'messages', $messageId, $all ? 'createReplyAll' : 'createReply'))
+            ->throw()
+            ->json();
+
+        if (! is_array($draft) || ! is_string($draft['id'] ?? null)) {
+            throw new InvalidResponseException('Expected Microsoft Graph to return the reply draft.');
+        }
+
+        $quoted = data_get($draft, 'body.content');
+        $quoted = is_string($quoted) ? $quoted : '';
+
+        $bodyTag = Str::match('/<body[^>]*>/i', $quoted);
+
+        try {
+            $this->patch($mailbox, $draft['id'], ['body' => [
+                'contentType' => 'HTML',
+                'content' => $bodyTag === '' ? $html.$quoted : Str::replaceFirst($bodyTag, $bodyTag.$html, $quoted),
+            ]]);
+
+            // Graph accepts attachments up to 3 MB in a single request; larger files need an upload session.
+            foreach ($attachments as $attachment) {
+                $this->graph->request()
+                    ->post($this->graph->path('users', $mailbox, 'messages', $draft['id'], 'attachments'), [
+                        '@odata.type' => '#microsoft.graph.fileAttachment',
+                        'name' => $attachment['name'],
+                        'contentType' => $attachment['contentType'],
+                        'contentBytes' => base64_encode($attachment['contents']),
+                    ])
+                    ->throw();
+            }
+
+            $this->graph->request()->post($this->graph->path('users', $mailbox, 'messages', $draft['id'], 'send'))->throw();
+        } catch (Throwable $exception) {
+            rescue(fn () => $this->graph->request()->delete($this->graph->path('users', $mailbox, 'messages', $draft['id'])), report: false);
+
+            throw $exception;
+        }
     }
 
     public function body(string $mailbox, string $messageId, BodyType $type, bool $unique): string

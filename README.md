@@ -18,8 +18,10 @@
 - [Receiving Messages](#receiving-messages)
 - [Working With Messages](#working-with-messages)
     - [Reading Messages](#reading-messages)
+    - [Listing Messages](#listing-messages)
     - [Attachments](#attachments)
     - [Organizing Messages](#organizing-messages)
+    - [Replying](#replying)
     - [Queued Actions](#queued-actions)
 - [A Complete Example](#a-complete-example)
 - [Testing](#testing)
@@ -287,7 +289,13 @@ $message->subject();
 $message->from();               // EmailAddress with ->address and ->name
 $message->to();
 $message->cc();
+$message->bcc();                // Only filled for mail the mailbox sent
+$message->replyTo();
 $message->receivedAt();         // CarbonImmutable
+$message->sentAt();
+$message->conversationId();     // Shared by every message of a thread
+$message->preview();            // The first characters of the body as text
+$message->hasAttachments();
 $message->internetMessageId();
 $message->header('Auto-Submitted');
 $message->isRead();
@@ -318,6 +326,27 @@ if ($message->isAutoSubmitted() || $message->isFromSelf()) {
 ```
 
 You may also get the raw RFC 822 message as a stream with `$message->mime()`.
+
+<a name="listing-messages"></a>
+### Listing Messages
+
+Events only tell you about changes from now on. To work through the messages a folder already holds, for example to
+import the last year of mail, list them page by page. Messages are returned newest first and are already loaded:
+
+```php
+use InnoGE\LaravelMsGraphMailbox\Enums\WellKnownFolder;
+
+$page = Mailbox::for('support@example.com')->messages(WellKnownFolder::SentItems, since: now()->subYear());
+
+foreach ($page->messages as $message) {
+    // ...
+}
+
+$page->next; // Pass it as "next:" to get the following page, null on the last page
+```
+
+A page holds up to 50 messages. For a large folder, handle one page per queued job and dispatch the next job with
+`$page->next`, instead of looping over every page in one process.
 
 <a name="attachments"></a>
 ### Attachments
@@ -363,6 +392,22 @@ $message->permanentDelete();
 ```
 
 Message ids stay the same when a message moves, so you may safely store them.
+
+<a name="replying"></a>
+### Replying
+
+A reply is sent from the mailbox, quotes the original message, stays in its conversation and lands in Sent Items:
+
+```php
+$message->reply('<p>Thanks, we are on it.</p>');
+
+$message->replyAll('<p>Here is the offer.</p>', [
+    ['name' => 'offer.pdf', 'contentType' => 'application/pdf', 'contents' => $pdf],
+]);
+```
+
+The body is HTML you wrote yourself, so escape anything that comes from user input. Replying needs the `Mail.Send`
+application permission in addition to `Mail.ReadWrite`, and each attachment may be up to 3 MB.
 
 <a name="queued-actions"></a>
 ### Queued Actions
@@ -487,7 +532,7 @@ $message = $mailbox->receive('support@example.com', [
 ]);
 ```
 
-You may also seed messages without dispatching an event with `addMessage`. Afterwards, assert what your code did:
+You may also seed messages without dispatching an event with `addMessage`, which is also what `messages()` lists. Afterwards, assert what your code did:
 
 ```php
 $mailbox->assertMoved($message, WellKnownFolder::Archive);
@@ -498,6 +543,7 @@ $mailbox->assertFlagged($message->id, FlagStatus::Complete);
 $mailbox->assertCategorized($message, ['Invoice']);
 $mailbox->assertDeleted($message->id);
 $mailbox->assertPermanentlyDeleted($message->id);
+$mailbox->assertReplied($message, fn (string $html, bool $all, array $attachments) => $all);
 $mailbox->assertNothingPerformed();
 ```
 

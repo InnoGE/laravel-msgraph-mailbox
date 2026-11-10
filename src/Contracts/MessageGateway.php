@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace InnoGE\LaravelMsGraphMailbox\Contracts;
 
+use DateTimeInterface;
 use InnoGE\LaravelMsGraphMailbox\Enums\BodyType;
 use InnoGE\LaravelMsGraphMailbox\Enums\FlagStatus;
 use InnoGE\LaravelMsGraphMailbox\Enums\WellKnownFolder;
@@ -16,6 +17,16 @@ interface MessageGateway
      * @return array<string, mixed>
      */
     public function find(string $mailbox, string $messageId): array;
+
+    /**
+     * @return array{messages: list<array<string, mixed>>, next: string|null}
+     */
+    public function page(string $mailbox, WellKnownFolder|string $folder, ?DateTimeInterface $since, ?string $next): array;
+
+    /**
+     * @param  list<array{name: string, contentType: string, contents: string}>  $attachments
+     */
+    public function reply(string $mailbox, string $messageId, string $html, bool $all, array $attachments): void;
 
     public function body(string $mailbox, string $messageId, BodyType $type, bool $unique): string;
 

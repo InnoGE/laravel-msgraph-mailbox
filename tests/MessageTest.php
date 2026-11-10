@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -294,3 +295,109 @@ it('refetches properties after an action', function () {
 it('cannot be serialized', function () {
     serialize(Mailbox::for('support@example.com')->message('msg-1'));
 })->throws(LogicException::class);
+
+it('exposes conversation, sent time and the remaining recipients', function () {
+    fakeGraph([MESSAGE => Http::response(graphMessage([
+        'conversationId' => 'conv-1',
+        'sentDateTime' => '2026-11-01T09:59:00Z',
+        'bccRecipients' => [['emailAddress' => ['address' => 'hidden@example.org']]],
+        'replyTo' => [['emailAddress' => ['address' => 'answers@example.org']]],
+        'bodyPreview' => 'Hello there',
+        'hasAttachments' => true,
+    ]))]);
+
+    $message = Mailbox::for('support@example.com')->message('msg-1');
+
+    expect($message->conversationId())->toBe('conv-1')
+        ->and($message->sentAt()?->toIso8601ZuluString())->toBe('2026-11-01T09:59:00Z')
+        ->and($message->bcc())->toEqual([new EmailAddress('hidden@example.org')])
+        ->and($message->replyTo())->toEqual([new EmailAddress('answers@example.org')])
+        ->and($message->preview())->toBe('Hello there')
+        ->and($message->hasAttachments())->toBeTrue();
+});
+
+it('has no sent time or attachments flag on sparse messages', function () {
+    fakeGraph([MESSAGE => Http::response(['id' => 'msg-1'])]);
+
+    $message = Mailbox::for('support@example.com')->message('msg-1');
+
+    expect($message->sentAt())->toBeNull()
+        ->and($message->hasAttachments())->toBeFalse();
+});
+
+it('lists a folder page by page without loading each message again', function () {
+    fakeGraph([
+        'GET /users/support@example.com/mailFolders/sentitems/messages' => fn (Request $request) => Http::response(Str::contains($request->url(), 'skip')
+            ? ['value' => [graphMessage(['id' => 'msg-2', 'subject' => 'Second'])]]
+            : ['value' => [graphMessage(), 'broken', ['subject' => 'no id']], '@odata.nextLink' => 'https://graph.microsoft.com/v1.0/users/support@example.com/mailFolders/sentitems/messages?%24skip=50']),
+    ]);
+
+    $mailbox = Mailbox::for('support@example.com');
+    $first = $mailbox->messages(WellKnownFolder::SentItems, since: CarbonImmutable::parse('2025-11-10 08:00:00', 'UTC'));
+    $second = $mailbox->messages(WellKnownFolder::SentItems, next: $first->next);
+
+    expect($first->messages)->toHaveCount(1)
+        ->and($first->messages[0]->subject())->toBe('Hello')
+        ->and($second->messages[0]->subject())->toBe('Second')
+        ->and($second->next)->toBeNull()
+        ->and(graphRequestCount())->toBe(2);
+
+    Http::assertSent(fn (Request $request) => ($request['$filter'] ?? null) === 'receivedDateTime ge 2025-11-10T08:00:00Z'
+        && $request['$orderby'] === 'receivedDateTime desc'
+        && Str::contains($request['$select'], 'conversationId'));
+});
+
+it('lists the inbox without a date filter by default', function () {
+    fakeGraph(['GET /users/support@example.com/mailFolders/inbox/messages' => Http::response(['value' => []])]);
+
+    expect(Mailbox::for('support@example.com')->messages()->messages)->toBe([]);
+
+    Http::assertSent(fn (Request $request) => Str::contains($request->url(), 'mailFolders/inbox') && ! isset($request['$filter']));
+});
+
+it('rejects a page without a message list', function () {
+    fakeGraph(['GET /users/support@example.com/mailFolders/inbox/messages' => Http::response(['value' => 'nope'])]);
+
+    Mailbox::for('support@example.com')->messages();
+})->throws(InvalidResponseException::class, 'page of messages');
+
+it('replies inside the quoted conversation with attachments', function (string $method, string $endpoint, string $quoted, string $expected) {
+    fakeGraph([
+        "POST /users/support@example.com/messages/msg-1/{$endpoint}" => Http::response(['id' => 'draft-1', 'body' => ['content' => $quoted]]),
+        'PATCH /users/support@example.com/messages/draft-1' => Http::response(),
+        'POST /users/support@example.com/messages/draft-1/attachments' => Http::response(),
+        'POST /users/support@example.com/messages/draft-1/send' => Http::response(),
+    ]);
+
+    $message = Mailbox::for('support@example.com')->message('msg-1');
+
+    expect($message->{$method}('<p>Thanks!</p>', [['name' => 'offer.pdf', 'contentType' => 'application/pdf', 'contents' => 'PDF']]))->toBe($message);
+
+    Http::assertSent(fn (Request $request) => $request->method() === 'PATCH' && $request['body'] === ['contentType' => 'HTML', 'content' => $expected]);
+    Http::assertSent(fn (Request $request) => Str::endsWith($request->url(), '/attachments')
+        && $request['name'] === 'offer.pdf'
+        && $request['contentBytes'] === base64_encode('PDF'));
+    Http::assertSent(fn (Request $request) => Str::endsWith($request->url(), '/draft-1/send'));
+})->with([
+    'reply' => ['reply', 'createReply', '<html><body lang="de"><hr>Original</body></html>', '<html><body lang="de"><p>Thanks!</p><hr>Original</body></html>'],
+    'reply all' => ['replyAll', 'createReplyAll', 'Original', '<p>Thanks!</p>Original'],
+]);
+
+it('removes the draft when a reply cannot be sent', function () {
+    fakeGraph([
+        'POST /users/support@example.com/messages/msg-1/createReply' => Http::response(['id' => 'draft-1']),
+        'PATCH /users/support@example.com/messages/draft-1' => Http::response(),
+        'POST /users/support@example.com/messages/draft-1/send' => Http::response(status: 500),
+        'DELETE /users/support@example.com/messages/draft-1' => Http::response(status: 500),
+    ]);
+
+    expect(fn () => Mailbox::for('support@example.com')->message('msg-1')->reply('<p>Thanks!</p>'))->toThrow(RequestException::class);
+
+    Http::assertSent(fn (Request $request) => $request->method() === 'DELETE' && Str::endsWith($request->url(), '/messages/draft-1'));
+});
+
+it('rejects a reply draft without id', function () {
+    fakeGraph(['POST /users/support@example.com/messages/msg-1/createReply' => Http::response([])]);
+
+    Mailbox::for('support@example.com')->message('msg-1')->reply('<p>Thanks!</p>');
+})->throws(InvalidResponseException::class, 'reply draft');

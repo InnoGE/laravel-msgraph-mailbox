@@ -24,11 +24,17 @@ final class Message
     /** @var list<Attachment>|null */
     private ?array $attachments = null;
 
+    /**
+     * @param  array<string, mixed>|null  $data  The message as Microsoft Graph returned it, when it is already loaded.
+     */
     public function __construct(
         public readonly string $mailbox,
         public readonly string $id,
         private readonly MessageGateway $gateway,
-    ) {}
+        ?array $data = null,
+    ) {
+        $this->data = $data;
+    }
 
     /**
      * Get the subject of the message.
@@ -72,6 +78,60 @@ final class Message
     public function cc(): array
     {
         return $this->recipients('ccRecipients');
+    }
+
+    /**
+     * Get the blind carbon copy recipients of the message. Only filled for messages the mailbox sent.
+     *
+     * @return list<EmailAddress>
+     */
+    public function bcc(): array
+    {
+        return $this->recipients('bccRecipients');
+    }
+
+    /**
+     * Get the addresses replies should go to.
+     *
+     * @return list<EmailAddress>
+     */
+    public function replyTo(): array
+    {
+        return $this->recipients('replyTo');
+    }
+
+    /**
+     * Get the id of the conversation the message belongs to. Every message of a thread shares it.
+     */
+    public function conversationId(): ?string
+    {
+        return $this->string('conversationId');
+    }
+
+    /**
+     * Get the first characters of the message's body as text.
+     */
+    public function preview(): ?string
+    {
+        return $this->string('bodyPreview');
+    }
+
+    /**
+     * Determine if the message has attachments that are not inline.
+     */
+    public function hasAttachments(): bool
+    {
+        return $this->get('hasAttachments') === true;
+    }
+
+    /**
+     * Get the time the message was sent.
+     */
+    public function sentAt(): ?CarbonImmutable
+    {
+        $sentAt = $this->string('sentDateTime');
+
+        return $sentAt === null ? null : CarbonImmutable::parse($sentAt);
     }
 
     /**
@@ -217,6 +277,31 @@ final class Message
             fn (?EmailAddress $address) => Str::lower((string) $address?->address),
             [$this->from(), $this->sender()],
         ), true);
+    }
+
+    /**
+     * Reply to the sender from the mailbox. The reply quotes the message, stays in its conversation and is
+     * saved to Sent Items.
+     *
+     * @param  list<array{name: string, contentType: string, contents: string}>  $attachments
+     */
+    public function reply(string $html, array $attachments = []): static
+    {
+        $this->gateway->reply($this->mailbox, $this->id, $html, false, $attachments);
+
+        return $this;
+    }
+
+    /**
+     * Reply to the sender and every recipient of the message.
+     *
+     * @param  list<array{name: string, contentType: string, contents: string}>  $attachments
+     */
+    public function replyAll(string $html, array $attachments = []): static
+    {
+        $this->gateway->reply($this->mailbox, $this->id, $html, true, $attachments);
+
+        return $this;
     }
 
     /**
