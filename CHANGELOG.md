@@ -2,6 +2,19 @@
 
 All notable changes to `laravel-msgraph-mailbox` will be documented in this file.
 
+## v1.1.0 - 2026-11-13
+
+### What's Changed
+
+* Add message listing, conversation fields and replies by @geisi in https://github.com/InnoGE/laravel-msgraph-mailbox/pull/4
+  * `Mailbox::for($address)->messages($folder, since:, next:)` lists a folder page by page, newest first, with the messages already loaded.
+  * New message fields: `conversationId()`, `sentAt()`, `bcc()`, `replyTo()`, `preview()` and `hasAttachments()`.
+  * `$message->reply()` and `replyAll()` answer in the same conversation, quote the original and land in Sent Items. Replying needs the `Mail.Send` application permission.
+  * `Mailbox::fake()` lists added messages and has `assertReplied()`.
+  
+
+**Full Changelog**: https://github.com/InnoGE/laravel-msgraph-mailbox/compare/v1.0.1...v1.1.0
+
 ## v1.0.1 - 2026-11-02
 
 ### What's Changed
